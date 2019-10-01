@@ -986,6 +986,16 @@ float network_accuracy_multi(network net, data d, int n)
     return acc;
 }
 
+int get_classes_from_last_layer(network *net)
+{
+    return net->layers[net->n-1].classes;
+}
+
+void free_network_ptr(network *net)
+{
+    free_network(*net);
+}
+
 void free_network(network net)
 {
     int i;
