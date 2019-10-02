@@ -9,8 +9,6 @@
 
 #define NUMCHARS 37
 
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-
 list *get_paths(char *filename)
 {
     char *path;
@@ -47,7 +45,6 @@ char **get_sequential_paths(char **paths, int n, int m, int mini_batch, int augm
     if (speed < 1) speed = 1;
     char** sequentia_paths = (char**)calloc(n, sizeof(char*));
     int i;
-    pthread_mutex_lock(&mutex);
     //printf("n = %d, mini_batch = %d \n", n, mini_batch);
     unsigned int *start_time_indexes = (unsigned int *)calloc(mini_batch, sizeof(unsigned int));
     for (i = 0; i < mini_batch; ++i) {
@@ -69,7 +66,6 @@ char **get_sequential_paths(char **paths, int n, int m, int mini_batch, int augm
         } while (strlen(sequentia_paths[i]) == 0);
     }
     free(start_time_indexes);
-    pthread_mutex_unlock(&mutex);
     return sequentia_paths;
 }
 
@@ -77,7 +73,6 @@ char **get_random_paths(char **paths, int n, int m)
 {
     char** random_paths = (char**)calloc(n, sizeof(char*));
     int i;
-    pthread_mutex_lock(&mutex);
     //printf("n = %d \n", n);
     for(i = 0; i < n; ++i){
         do {
@@ -88,7 +83,6 @@ char **get_random_paths(char **paths, int n, int m)
             if (strlen(random_paths[i]) <= 4) printf(" Very small path to the image: %s \n", random_paths[i]);
         } while (strlen(random_paths[i]) == 0);
     }
-    pthread_mutex_unlock(&mutex);
     return random_paths;
 }
 
@@ -169,7 +163,7 @@ matrix load_image_augment_paths(char **paths, int n, int use_flip, int min, int 
     return X;
 }
 
-extern int check_mistakes;
+int check_mistakes = 0;
 
 box_label *read_boxes(char *filename, int *n)
 {
@@ -1131,7 +1125,7 @@ data load_data_detection(int n, char **paths, int m, int w, int h, int c, int bo
                 save_image(sized, buff);
                 if (show_imgs == 1) {
                     show_image(sized, buff);
-                    wait_until_press_key_cv();
+                    //wait_until_press_key_cv();
                 }
                 printf("\nYou use flag -show_imgs, so will be saved aug_...jpg images. Press Enter: \n");
                 //getchar();
@@ -1185,54 +1179,6 @@ void *load_thread(void *ptr)
     }
     free(ptr);
     return 0;
-}
-
-pthread_t load_data_in_thread(load_args args)
-{
-    pthread_t thread;
-    struct load_args* ptr = (load_args*)calloc(1, sizeof(struct load_args));
-    *ptr = args;
-    if(pthread_create(&thread, 0, load_thread, ptr)) error("Thread creation failed");
-    return thread;
-}
-
-void *load_threads(void *ptr)
-{
-    //srand(time(0));
-    int i;
-    load_args args = *(load_args *)ptr;
-    if (args.threads == 0) args.threads = 1;
-    data *out = args.d;
-    int total = args.n;
-    free(ptr);
-    data* buffers = (data*)calloc(args.threads, sizeof(data));
-    pthread_t* threads = (pthread_t*)calloc(args.threads, sizeof(pthread_t));
-    for(i = 0; i < args.threads; ++i){
-        args.d = buffers + i;
-        args.n = (i+1) * total/args.threads - i * total/args.threads;
-        threads[i] = load_data_in_thread(args);
-    }
-    for(i = 0; i < args.threads; ++i){
-        pthread_join(threads[i], 0);
-    }
-    *out = concat_datas(buffers, args.threads);
-    out->shallow = 0;
-    for(i = 0; i < args.threads; ++i){
-        buffers[i].shallow = 1;
-        free_data(buffers[i]);
-    }
-    free(buffers);
-    free(threads);
-    return 0;
-}
-
-pthread_t load_data(load_args args)
-{
-    pthread_t thread;
-    struct load_args* ptr = (load_args*)calloc(1, sizeof(struct load_args));
-    *ptr = args;
-    if(pthread_create(&thread, 0, load_threads, ptr)) error("Thread creation failed");
-    return thread;
 }
 
 data load_data_writing(char **paths, int n, int m, int w, int h, int out_w, int out_h)

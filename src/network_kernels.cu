@@ -36,8 +36,6 @@
 //#include <opencv2/highgui/highgui_c.h>
 //#endif
 
-#include "http_stream.h"
-
 float * get_network_output_gpu_layer(network net, int i);
 float * get_network_delta_gpu_layer(network net, int i);
 float * get_network_output_gpu(network net);
@@ -214,26 +212,6 @@ typedef struct {
     float *err;
 } train_args;
 
-void *train_thread(void *ptr)
-{
-    train_args args = *(train_args*)ptr;
-    free(ptr);
-    cuda_set_device(args.net.gpu_index);
-    *args.err = train_network(args.net, args.d);
-    return 0;
-}
-
-pthread_t train_network_in_thread(network net, data d, float *err)
-{
-    pthread_t thread;
-    train_args *ptr = (train_args *)calloc(1, sizeof(train_args));
-    ptr->net = net;
-    ptr->d = d;
-    ptr->err = err;
-    if(pthread_create(&thread, 0, train_thread, ptr)) error("Thread creation failed");
-    return thread;
-}
-
 void pull_updates(layer l)
 {
     if(l.type == CONVOLUTIONAL){
@@ -388,78 +366,6 @@ typedef struct{
     int n;
     int j;
 } sync_args;
-
-void *sync_layer_thread(void *ptr)
-{
-    sync_args args = *(sync_args*)ptr;
-    sync_layer(args.nets, args.n, args.j);
-    free(ptr);
-    return 0;
-}
-
-pthread_t sync_layer_in_thread(network *nets, int n, int j)
-{
-    pthread_t thread;
-    sync_args *ptr = (sync_args *)calloc(1, sizeof(sync_args));
-    ptr->nets = nets;
-    ptr->n = n;
-    ptr->j = j;
-    if(pthread_create(&thread, 0, sync_layer_thread, ptr)) error("Thread creation failed");
-    return thread;
-}
-
-void sync_nets(network *nets, int n, int interval)
-{
-    int j;
-    int layers = nets[0].n;
-    pthread_t *threads = (pthread_t *) calloc(layers, sizeof(pthread_t));
-
-    *nets[0].seen += interval * (n-1) * nets[0].batch * nets[0].subdivisions;
-    for (j = 0; j < n; ++j){
-        *nets[j].seen = *nets[0].seen;
-    }
-    for (j = 0; j < layers; ++j) {
-        threads[j] = sync_layer_in_thread(nets, n, j);
-    }
-    for (j = 0; j < layers; ++j) {
-        pthread_join(threads[j], 0);
-    }
-    free(threads);
-}
-
-float train_networks(network *nets, int n, data d, int interval)
-{
-    int i;
-#ifdef _DEBUG
-    int batch = nets[0].batch;
-    int subdivisions = nets[0].subdivisions;
-    assert(batch * subdivisions * n == d.X.rows);
-#endif
-    pthread_t *threads = (pthread_t *) calloc(n, sizeof(pthread_t));
-    float *errors = (float *) calloc(n, sizeof(float));
-
-    float sum = 0;
-    for(i = 0; i < n; ++i){
-        data p = get_data_part(d, i, n);
-        threads[i] = train_network_in_thread(nets[i], p, errors + i);
-    }
-    for(i = 0; i < n; ++i){
-        pthread_join(threads[i], 0);
-        //printf("%f\n", errors[i]);
-        sum += errors[i];
-    }
-    //cudaDeviceSynchronize();
-    if (get_current_batch(nets[0]) % interval == 0) {
-        printf("Syncing... ");
-        fflush(stdout);
-        sync_nets(nets, n, interval);
-        printf("Done!\n");
-    }
-    //cudaDeviceSynchronize();
-    free(threads);
-    free(errors);
-    return (float)sum/(n);
-}
 
 float *get_network_output_layer_gpu(network net, int i)
 {

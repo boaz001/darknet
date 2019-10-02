@@ -369,11 +369,6 @@ float train_network_sgd(network net, data d, int n)
 
 float train_network(network net, data d)
 {
-    return train_network_waitkey(net, d, 0);
-}
-
-float train_network_waitkey(network net, data d, int wait_key)
-{
     assert(d.X.rows % net.batch == 0);
     int batch = net.batch;
     int n = d.X.rows / batch;
@@ -387,7 +382,6 @@ float train_network_waitkey(network net, data d, int wait_key)
         net.current_subdivision = i;
         float err = train_network_datum(net, X, y);
         sum += err;
-        if(wait_key) wait_key_cv(5);
     }
     free(X);
     free(y);
